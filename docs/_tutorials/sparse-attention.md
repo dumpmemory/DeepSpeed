@@ -1,21 +1,22 @@
 ---
-title: "DeepSpeed  Sparse Attention"
+title: "DeepSpeed Sparse Attention"
+tags: training
 ---
 
 In this tutorial we describe how to use DeepSpeed Sparse Attention (SA) and its building-block kernels. The easiest way to use SA is through DeepSpeed launcher. We will describe this through an example in [How to use sparse attention with DeepSpeed launcher](#how-to-use-sparse-attention-with-deepspeed-launcher) section. But before that, we introduce modules provided by DeepSpeed SA in the [next](#sparse-attention-modules) section.
 
-**Note:** Currently DeepSpeed Sparse Attention can be used only on NVIDIA V100 GPU using Torch >= 1.5 and Cuda 10.1 or 10.2.
+**Note:** Currently, DeepSpeed Sparse Attention can be used only on NVIDIA V100 or A100 GPUs using Torch >= 1.6 and CUDA 10.1, 10.2, 11.0, or 11.1.
 {: .notice--warning}
 
 ## Sparse attention modules
-* **MatMul**: This module handles block-sparse matrix-matrix multiplication. Currently it supports SDD, DSD, and DDS as described in [DeepSpeed Sparse Attention](https://www.deepspeed.ai/news/2020/09/08/sparse-attention.html) section.
+* **MatMul**: This module handles block-sparse matrix-matrix multiplication. Currently it supports SDD, DSD, and DDS as described in [DeepSpeed Sparse Attention](https://www.deepspeed.ai/2020/09/08/sparse-attention.html) section.
 * **Softmax**: This module applies block sparse softmax. It handles both forward and backward pass.
 * **SparseSelfAttention**: This module uses MatMul and Softmax kernels and generates Context Layer output given Query, Keys and Values. It is a simplified version of common operations in any self-attention layer. It can also apply:
   * `Relative position embedding`
   * `Attention mask`
   * `Key padding mask`
 on the intermediate attention scores. For more details about self attention, please check [MultiHeadAttention](https://pytorch.org/docs/master/generated/torch.nn.MultiheadAttention.html#multiheadattention).
-* **BertSparseSelfAttention**: This module contains a simplified BertSelfAttention layer that can be used instead of original dense Bert Self-Attention layer. Our implementation is based on [DeepSpeedExample](https://github.com/microsoft/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py#L373-#L434).
+* **BertSparseSelfAttention**: This module contains a simplified BertSelfAttention layer that can be used instead of original dense Bert Self-Attention layer. Our implementation is based on [DeepSpeedExample](https://github.com/deepspeedai/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py#L373-#L434).
 * **SparseAttentionUtils**: This module provides few utility functions to handle adapting pre-trained model with sparse attention:
   * `replace_model_self_attention_with_sparse_self_attention`: If you have currently loaded a model and want to replace self-attention module with sparse self-attention, you can simply use this function to handle it for you. It currently handles BERT and RoBERTa based pre-trained models, but you can extend it base on your model type if it is different from these two. You also need to extend the position embedding to handle new sequence length; this can be done using `extend_position_embedding` function.
   * `update_tokenizer_model_max_length`: This function simply updates maximum position embedding in your tokenizer with the new value.
@@ -33,9 +34,9 @@ on the intermediate attention scores. For more details about self attention, ple
 {: .notice--warning}
 
 ## How to use sparse attention with DeepSpeed launcher
-In this section we describe how to use DeepSpeed Sparse Attention through our [bing_bert](https://github.com/microsoft/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py) code.
+In this section we describe how to use DeepSpeed Sparse Attention through our [bing_bert](https://github.com/deepspeedai/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py) code.
 
-* **Update attention module**: First, you need to update your attention module based on sparse computation. Here, we use [BertSparseSelfAttention](https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/ops/sparse_attention/bert_sparse_self_attention.py) which is the sparse version of `BertSelfAttention` from our [bing_bert](https://github.com/microsoft/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py) code. It rewrites `BertSelfAttention` where it replaces:
+* **Update attention module**: First, you need to update your attention module based on sparse computation. Here, we use [BertSparseSelfAttention](https://github.com/deepspeedai/DeepSpeed/blob/master/deepspeed/ops/sparse_attention/bert_sparse_self_attention.py) which is the sparse version of `BertSelfAttention` from our [bing_bert](https://github.com/deepspeedai/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py) code. It rewrites `BertSelfAttention` where it replaces:
 
 ```python
 attention_scores = torch.matmul(query_layer, key_layer)
@@ -67,7 +68,7 @@ context_layer =
 	key_padding_mask=attention_mask)
 ```
 
-in which `sparse_self_attention` is an instance of [SparseSelfAttention](https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/ops/sparse_attention/sparse_self_attention.py). This module computes attention context through sparse attention replacing underlying matrix multiplications and softmax with their equivalent sparse version. You can update any other attention module similarly.
+in which `sparse_self_attention` is an instance of [SparseSelfAttention](https://github.com/deepspeedai/DeepSpeed/blob/master/deepspeed/ops/sparse_attention/sparse_self_attention.py). This module computes attention context through sparse attention replacing underlying matrix multiplications and softmax with their equivalent sparse version. You can update any other attention module similarly.
 
 * **Setup sparse attention config in the model**: You need to setup the sparse attention config. In our example, this is done in the `BertModel`.
 
@@ -81,7 +82,7 @@ self.encoder = BertEncoder(
    config, args, sparse_attention_config=self.sparse_attention_config)
 ```
 
-* **Update encoder model**: Further, you need to update your encoder model to use SA for the attention layer when SA is enabled. Please check our [bing_bert example](https://github.com/microsoft/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py) in which we use `BertSparseSelfAttention` instead of `BertSelfAttention` when SA is enabled.
+* **Update encoder model**: Further, you need to update your encoder model to use SA for the attention layer when SA is enabled. Please check our [bing_bert example](https://github.com/deepspeedai/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py) in which we use `BertSparseSelfAttention` instead of `BertSelfAttention` when SA is enabled.
 
 ```python
 if sparse_attention_config is not None:
@@ -91,7 +92,7 @@ if sparse_attention_config is not None:
          config, sparsity_config=sparse_attention_config)
 ```
 
-* **Pad and unpad input data**: Also you may need to pad sequence dimension of `input_ids` and `attention_mask` to be multiple of sparse block size. As mentioned in [module](#sparse-attention-modules) section above, DeepSpeed provides utility functions for padding and unpadding. Please check our [bing_bert example](https://github.com/microsoft/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py) to see where and how pad and unpad the inputs or outputs of the model.
+* **Pad and unpad input data**: Also you may need to pad sequence dimension of `input_ids` and `attention_mask` to be multiple of sparse block size. As mentioned in [module](#sparse-attention-modules) section above, DeepSpeed provides utility functions for padding and unpadding. Please check our [bing_bert example](https://github.com/deepspeedai/DeepSpeedExamples/blob/master/bing_bert/nvidia/modelingpreln.py) to see where and how pad and unpad the inputs or outputs of the model.
 
 ```python
 if self.sparse_attention_config is not None:
@@ -103,7 +104,7 @@ if self.sparse_attention_config is not None:
       position_ids=None,
       inputs_embeds=None,
       pad_token_id=self.pad_token_id,
-      model_mbeddings=self.embeddings)
+      model_embeddings=self.embeddings)
 .
 .
 .
@@ -119,9 +120,9 @@ if self.sparse_attention_config is not None and pad_len > 0:
 --deepspeed_sparse_attention
 ```
 
-Please check [our bing_bert runner script](https://github.com/microsoft/DeepSpeedExamples/blob/master/bing_bert/ds_sa_train_bert_bsz64k_seq128.sh) as an example of how to enable SA with DeepSpeed launcher.
+Please check [our bing_bert runner script](https://github.com/deepspeedai/DeepSpeedExamples/blob/master/bing_bert/ds_sa_train_bert_bsz64k_seq128.sh) as an example of how to enable SA with DeepSpeed launcher.
 
-* **Add sparsity config**: The sparsity config can be set through the [DeepSpeed JSON config file](https://github.com/microsoft/DeepSpeedExamples/blob/master/bing_bert/deepspeed_bsz64k_lamb_config_seq128.json). In this example, we have used `fixed` sparsity mode that will be described in [How to config sparsity structures](#how-to-config-sparsity-structures) section.
+* **Add sparsity config**: The sparsity config can be set through the [DeepSpeed JSON config file](https://github.com/deepspeedai/DeepSpeedExamples/blob/master/bing_bert/deepspeed_bsz64k_lamb_config_seq128.json). In this example, we have used `fixed` sparsity mode that will be described in [How to config sparsity structures](#how-to-config-sparsity-structures) section.
 
 ```json
 "sparse_attention": {
@@ -148,7 +149,7 @@ Please refer to the Docstrings for details of how to use each module separately.
 ## How to config sparsity structures
 Following we describe supported sparsity structures, their parameter set and the flexibility of adding arbitrary sparsity pattern on the self-attention layer. You can update DeepSpeed config file using any of the supported sparsity structures and set the parameters accordingly.
 
-* **SpasityConfig**:
+* **SparsityConfig**:
 This module, is the parent class for all sparsity structures and contains the shared features of all sparsity structures. It takes the following parameters:
   * `num_heads`: an integer determining number of attention heads of the layer.
   * `block`: an integer determining the block size. Current implementation of sparse self-attention is based on blocked sparse matrices. In which this parameter defines size of such square blocks; `Block X Block`.
@@ -164,7 +165,7 @@ This structure is based on [Generative Modeling with Sparse Transformers](https:
 
 ![Fixed sparsity structure](/assets/images/sa_fixed_sparsity_structure.png)
 
-* **BSLongformer** (BSLongformerSparistyConfig):
+* **BSLongformer** (BSLongformerSparsityConfig):
 This structure is an edited version of [Longformer: The Long-Document Transformer](https://arxiv.org/pdf/2004.05150.pdf), in which instead of single token-wise sparsity, we offer block of tokens sparsity. Parameters that define this patters are:
 	* `num_sliding_window_blocks`: an integer determining the number of blocks in sliding local attention window.
 	* `global_block_indices`: a list of integers determining which blocks are considered as global attention. Given indices, determine the blocks that all other token blocks attend to and they attend to all other token blocks. Notice that if `global_block_end_indices` parameter is set, this parameter is used as starting index of each global window.
@@ -184,7 +185,7 @@ This structure also combines the idea of local, global and random attention. Fur
 	* `global_block_end_indices`: a list of integers determining end indices of global window blocks. By default this is not used. But if it is set, it must have the same size as `global_block_indices` parameter, and combining this two parameters, for each index `i`, blocks from `global_block_indices[i]` to `global_block_end_indices[i]` (exclusive) are considered as global attention block.
 	* `attention`: a string determining attention type. Attention can be `unidirectional`, such as autoregressive models, in which tokens attend only to tokens appear before them in the context. Considering that, the upper triangular of attention matrix is empty as above figure. Or it can be `bidirectional`, such as BERT, in which tokens can attend to any other tokens before or after them. Then, the upper triangular part of the attention matrix is mirror of the lower triangular in the above figure.
 	* `horizontal_global_attention`: a boolean determining if blocks that are global representative of a local window, also attend to all other blocks. This is valid only if attention type is `bidirectional`. Looking at the attention matrix, that means global attention not only includes the vertical blocks, but also horizontal blocks
-Figure bellow illustrates an example of `variable` sparsity, in which blue, orange and green blocks illustrate local, global, and random attention blocks respectively.
+Figure below illustrates an example of `variable` sparsity, in which blue, orange and green blocks illustrate local, global, and random attention blocks respectively.
 
 ![Variable sparsity structure](/assets/images/sa_variable_sparsity_structure.png)
 
