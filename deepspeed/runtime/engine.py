@@ -78,7 +78,7 @@ from deepspeed.runtime.sparse_tensor import SparseTensor
 from deepspeed.runtime import lr_schedules
 from deepspeed.utils import groups
 from deepspeed.utils import logger, log_dist, log_dist_once, instrument_w_nvtx
-from deepspeed.utils.torch import required_torch_version
+from deepspeed.utils.torch import required_torch_version, is_functorch_transforming
 from deepspeed.utils.z3_leaf_module import apply_zero_leaf_module_config
 from deepspeed.utils.timer import NoopTimer, ThroughputTimer, SynchronizedWallClockTimer, \
     FORWARD_MICRO_TIMER, BACKWARD_MICRO_TIMER, BACKWARD_INNER_MICRO_TIMER, BACKWARD_REDUCE_MICRO_TIMER, \
@@ -2453,6 +2453,8 @@ class DeepSpeedEngine(Module):
             self.optimizer.reduce_gradients(pipeline_parallel=self.pipeline_parallelism)
 
     def _backward_prologue(self):
+        if is_functorch_transforming():
+            return
         self._start_timers(self.engine_timers.backward_timers)
 
         # When necessary internal APIs are not available, we disable direct calls to tensor.backward()
@@ -2508,12 +2510,16 @@ class DeepSpeedEngine(Module):
         self._stop_timers(self.engine_timers.backward_timers)
 
     def _backward_prologue_per_tensor(self, grad):
+        if is_functorch_transforming():
+            return grad
         # Only scale gradients if scale_wrt_gas is True, consistent with backward() parameter
         if grad is not None and self._scale_wrt_gas:
             return grad / self.gradient_accumulation_steps()
         return grad
 
     def _backward_post_hook(self):
+        if is_functorch_transforming():
+            return
         if not self._running_engine_backward:
             # Check if loss scaling was required but not applied
             needs_scaler = False
